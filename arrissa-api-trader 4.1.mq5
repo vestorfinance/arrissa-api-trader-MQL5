@@ -18,6 +18,9 @@ CTrade trade;
 
 string orderNumber;
 
+int MaxSlippage = 100;
+ENUM_ORDER_TYPE_FILLING FOTypeEnum;
+
 #define RATE_LIMIT 429
 
 enum YESNO{
@@ -1354,78 +1357,125 @@ void SetTrailingStop(double trailingStart, double trailingStop, double trailingS
 //+------------------------------------------------------------------+
 //| Main Buy function to initialize a Good Price entry               |
 //+------------------------------------------------------------------+
-void Buy(string symbol, double TP1, double TP2, double TP3, double TP4, double SL, string orderNumber) {
-    int ticket;
-    MqlTick lastTick;
+void Buy(string symbol, double TP1, double TP2, double TP3, double TP4, double SL, string orderNumber)
+{
+    int                 ticket;
+    MqlTick             lastTick;
 
-    if (!SymbolInfoTick(symbol, lastTick)) return;
-
+    // get current ask
+    if(!SymbolInfoTick(symbol, lastTick))
+        return;
     double price = lastTick.ask;
-    string initialComment = ExpertName + orderNumber; // Define initial comment for the series
 
-    // Initialize and store Good Price Entry
+    // build comment & entry
+    string initialComment = ExpertName + orderNumber;
     GoodPriceEntry entry;
-    entry.symbol = symbol;
-    entry.TP1 = TP1;
-    entry.TP2 = TP2;
-    entry.TP3 = TP3;
-    entry.TP4 = TP4;
-    entry.SL = SL;
-    entry.LowestPriceInSeries = price; // Set initial price as the lowest for the new series
-    entry.magicNumber = MagicNumber_TP1;
-    entry.currentTradeCount = 1; // Start with the first trade
-    entry.seriesComplete = false; // Series is active until the max trades are reached
-    entry.initialComment = initialComment; // Store the initial comment for the series
+    entry.symbol                = symbol;
+    entry.TP1                   = TP1;
+    entry.TP2                   = TP2;
+    entry.TP3                   = TP3;
+    entry.TP4                   = TP4;
+    entry.SL                    = SL;
+    entry.LowestPriceInSeries   = price;
+    entry.magicNumber           = MagicNumber_TP1;
+    entry.currentTradeCount     = 1;
+    entry.seriesComplete        = false;
+    entry.initialComment        = initialComment;
 
     ArrayResize(goodPriceEntries, ArraySize(goodPriceEntries) + 1);
     goodPriceEntries[ArraySize(goodPriceEntries) - 1] = entry;
 
-    // Execute the first trade at market price
-    ticket = trade.Buy(Lotsize, symbol, price, CalculateStopLoss(SL, symbol), TP1, initialComment);
-    if (ticket != -1) {
-        entry.LowestPriceInSeries = price; // Initialize LowestPriceInSeries with the first trade's price
-    }
+    //--- prepare raw trade request
+    MqlTradeRequest  req;
+    MqlTradeResult   res;
+    ZeroMemory(req);
+    ZeroMemory(res);
+
+    req.action         = TRADE_ACTION_DEAL;
+    req.symbol         = symbol;
+    req.volume         = Lotsize;
+    req.price          = price;
+    req.sl             = CalculateStopLoss(SL, symbol);
+    req.tp             = TP1;
+    req.magic          = MagicNumber_TP1;
+    req.type           = ORDER_TYPE_BUY;
+    req.type_filling   = FOTypeEnum;
+    req.deviation      = MaxSlippage;
+    req.comment        = initialComment;
+
+    //--- send order
+    if(OrderSend(req, res))
+        ticket = (int)res.order;
+    else
+        ticket = -1;
+
+    //--- if success, update series price
+    if(ticket != -1)
+        goodPriceEntries[ArraySize(goodPriceEntries) - 1].LowestPriceInSeries = price;
 }
-
-
 
 
 
 //+------------------------------------------------------------------+
 //| Main Sell function to initialize a Good Price entry for sells    |
 //+------------------------------------------------------------------+
-void Sell(string symbol, double TP1, double TP2, double TP3, double TP4, double SL, string orderNumber) {
-    int ticket;
-    MqlTick lastTick;
+void Sell(string symbol, double TP1, double TP2, double TP3, double TP4, double SL, string orderNumber)
+{
+    int                 ticket;
+    MqlTick             lastTick;
 
-    if (!SymbolInfoTick(symbol, lastTick)) return;
-
+    // get current bid
+    if(!SymbolInfoTick(symbol, lastTick))
+        return;
     double price = lastTick.bid;
-    string initialComment = ExpertName + orderNumber; // Define initial comment for the series
 
-    // Initialize and store Good Price Entry for Sell
+    // build comment & entry
+    string initialComment = ExpertName + orderNumber;
     GoodPriceEntrySell entry;
-    entry.symbol = symbol;
-    entry.TP1 = TP1;
-    entry.TP2 = TP2;
-    entry.TP3 = TP3;
-    entry.TP4 = TP4;
-    entry.SL = SL;
-    entry.HighestPriceInSeries = price; // Set initial price as the highest for the new sell series
-    entry.magicNumber = MagicNumber_TP1;
-    entry.currentTradeCount = 1; // Start with the first trade
-    entry.seriesComplete = false; // Series is active until the max trades are reached
-    entry.initialComment = initialComment; // Store the initial comment for the series
+    entry.symbol                 = symbol;
+    entry.TP1                    = TP1;
+    entry.TP2                    = TP2;
+    entry.TP3                    = TP3;
+    entry.TP4                    = TP4;
+    entry.SL                     = SL;
+    entry.HighestPriceInSeries   = price;
+    entry.magicNumber            = MagicNumber_TP1;
+    entry.currentTradeCount      = 1;
+    entry.seriesComplete         = false;
+    entry.initialComment         = initialComment;
 
     ArrayResize(goodPriceEntriesSell, ArraySize(goodPriceEntriesSell) + 1);
     goodPriceEntriesSell[ArraySize(goodPriceEntriesSell) - 1] = entry;
 
-    // Execute the first sell trade at market price using provided SL
-    ticket = trade.Sell(Lotsize, symbol, price, SL, TP1, initialComment);
-    if (ticket != -1) {
-        entry.HighestPriceInSeries = price; // Initialize HighestPriceInSeries with the first trade's price
-    }
+    //--- prepare raw trade request
+    MqlTradeRequest  req;
+    MqlTradeResult   res;
+    ZeroMemory(req);
+    ZeroMemory(res);
+
+    req.action         = TRADE_ACTION_DEAL;
+    req.symbol         = symbol;
+    req.volume         = Lotsize;
+    req.price          = price;
+    req.sl             = SL;
+    req.tp             = TP1;
+    req.magic          = MagicNumber_TP1;
+    req.type           = ORDER_TYPE_SELL;
+    req.type_filling   = FOTypeEnum;
+    req.deviation      = MaxSlippage;
+    req.comment        = initialComment;
+
+    //--- send order
+    if(OrderSend(req, res))
+        ticket = (int)res.order;
+    else
+        ticket = -1;
+
+    //--- if success, update series price
+    if(ticket != -1)
+        goodPriceEntriesSell[ArraySize(goodPriceEntriesSell) - 1].HighestPriceInSeries = price;
 }
+
 
 
 
